@@ -1,0 +1,40 @@
+{
+  "name": "Safarau Planner",
+  "short_name": "Safarau",
+  "description": "Planner premium pour la vie quotidienne : prières, Coran, agenda, tâches, budget et journal. Les données restent sur votre appareil.",
+  "lang": "fr",
+  "dir": "ltr",
+  "start_url": "./",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "portrait-primary",
+  "background_color": "#F8F5EF",
+  "theme_color": "#49352F",
+  "categories": ["lifestyle", "productivity"],
+  "icons": [
+    {
+      "src": "./img/icone-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./img/icone-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "any"
+    },
+    {
+      "src": "./img/icone-masquable-192.png",
+      "sizes": "192x192",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "./img/icone-masquable-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    }
+  ]
+}
