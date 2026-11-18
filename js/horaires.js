@@ -1,7 +1,7 @@
-// Horaires de prière calculés localement, à partir des coordonnées de la ville.
-// Méthode répandue (angles fixes) : Fajr à 18° sous l'horizon, Icha à 17°,
-// lever et coucher à 0,833°. Ce sont des valeurs indicatives ; pour la
-// prière en groupe, on se réfère toujours aux horaires de sa mosquée.
+// Horaires de prière calculés localement à partir des coordonnées de
+// la ville choisie. La méthode (angles du Fajr et de l'Icha, école de
+// l'Asr) est paramétrable depuis les réglages. Les résultats restent
+// indicatifs : pour la prière en groupe, la mosquée est la référence.
 
 export const villes = [
   { nom: "Paris",         lat: 48.8566, lng: 2.3522,  fuseau: 1,  heureEte: "europe" },
@@ -11,6 +11,7 @@ export const villes = [
   { nom: "Bordeaux",      lat: 44.8378, lng: -0.5792, fuseau: 1,  heureEte: "europe" },
   { nom: "Toulouse",      lat: 43.6046, lng: 1.4442,  fuseau: 1,  heureEte: "europe" },
   { nom: "Strasbourg",    lat: 48.5734, lng: 7.7521,  fuseau: 1,  heureEte: "europe" },
+  { nom: "Nantes",        lat: 47.2184, lng: -1.5536, fuseau: 1,  heureEte: "europe" },
   { nom: "Bruxelles",     lat: 50.8503, lng: 4.3517,  fuseau: 1,  heureEte: "europe" },
   { nom: "Genève",        lat: 46.2044, lng: 6.1432,  fuseau: 1,  heureEte: "europe" },
   { nom: "Londres",       lat: 51.5074, lng: -0.1278, fuseau: 0,  heureEte: "europe" },
@@ -20,7 +21,8 @@ export const villes = [
   { nom: "Rabat",         lat: 34.0209, lng: -6.8416, fuseau: 0,  heureEte: null },
   { nom: "Alger",         lat: 36.7538, lng: 3.0588,  fuseau: 1,  heureEte: null },
   { nom: "Tunis",         lat: 36.8065, lng: 10.1815, fuseau: 1,  heureEte: null },
-  { nom: "Dakar",         lat: 14.7167, lng: -17.4677, fuseau: 0, heureEte: null },
+  { nom: "Dakar",         lat: 14.7167, lng: -17.4677, fuseau: 0,  heureEte: null },
+  { nom: "Abuja",         lat: 9.0765,  lng: 7.3986,  fuseau: 1,  heureEte: null },
   { nom: "Istanbul",      lat: 41.0082, lng: 28.9784, fuseau: 3,  heureEte: null },
   { nom: "Dubaï",         lat: 25.2048, lng: 55.2708, fuseau: 4,  heureEte: null },
   { nom: "Riyad",         lat: 24.7136, lng: 46.6753, fuseau: 3,  heureEte: null },
@@ -34,14 +36,29 @@ export const prieres = [
   { cle: "icha",    nom: "Icha",    arabe: "العشاء" },
 ];
 
+// Méthodes de calcul usuelles : la numérologie des angles vient des
+// grandes institutions, l'utilisateur choisit celle de sa communauté.
+export const methodes = [
+  { id: "mwl",     nom: "Ligue islamique mondiale", fajr: 18,   icha: 17 },
+  { id: "uoif",    nom: "UOIF (France)",            fajr: 12,   icha: 12 },
+  { id: "isna",    nom: "ISNA (Amérique du Nord)",  fajr: 15,   icha: 15 },
+  { id: "egypte",  nom: "Autorité égyptienne",      fajr: 19.5, icha: 17.5 },
+  { id: "karachi", nom: "Karachi",                  fajr: 18,   icha: 18 },
+];
+
+export const ecolesAsr = [
+  { id: "chafii", nom: "École majoritaire (ombre ×1)" },
+  { id: "hanafi", nom: "École hanafite (ombre ×2)" },
+];
+
 const enRadians = (deg) => deg * Math.PI / 180;
 const enDegres = (rad) => rad * 180 / Math.PI;
 const remise = (angle) => angle - Math.floor(angle / 360) * 360;
 
-// Passage à l'heure d'été : dernier dimanche de mars au dernier
-// dimanche d'octobre en Europe, deuxième dimanche de mars au premier
-// dimanche de novembre en Amérique du Nord. On néglige les heures
-// exactes de bascule, l'écart ne dépasse jamais une minute ici.
+// Heure d'été : dernier dimanche de mars au dernier dimanche d'octobre
+// en Europe ; deuxième dimanche de mars au premier dimanche de
+// novembre en Amérique du Nord. Les heures de bascule exactes sont
+// négligées : l'écart reste inférieur à la minute.
 function dernierDimanche(annee, mois) {
   const finDuMois = new Date(annee, mois + 1, 0);
   return finDuMois.getDate() - finDuMois.getDay();
@@ -49,9 +66,8 @@ function dernierDimanche(annee, mois) {
 
 function heureEteEurope(date) {
   const a = date.getFullYear();
-  const debut = new Date(a, 2, dernierDimanche(a, 2), 2);
-  const fin = new Date(a, 9, dernierDimanche(a, 9), 3);
-  return date >= debut && date < fin;
+  return date >= new Date(a, 2, dernierDimanche(a, 2), 2)
+      && date < new Date(a, 9, dernierDimanche(a, 9), 3);
 }
 
 function heureEteNordamerique(date) {
@@ -68,11 +84,13 @@ function decalage(ville, date) {
   return ville.fuseau;
 }
 
-export function calculeHoraires(date, ville) {
+export function calculeHoraires(date, ville, parametres = {}) {
+  const methode = parametres.methode ?? methodes[0];
+  const ombreAsr = parametres.ombreAsr === 2 ? 2 : 1;
   const fuseau = decalage(ville, date);
   const j = date.getDate(), m = date.getMonth() + 1, a = date.getFullYear();
 
-  // Date julienne (approximation suffisante, on reste sur des jours entiers)
+  // Date julienne, à partir du jour entier (précision suffisante ici)
   let annee = a, mois = m;
   if (m <= 2) { annee -= 1; mois += 12; }
   const siecle = Math.floor(annee / 100);
@@ -100,19 +118,18 @@ export function calculeHoraires(date, ville) {
 
   const midi = 12 + fuseau - ville.lng / 15 - equation;
 
-  // Écart horaire entre le midi vrai et un soleil à `angle` degrés sous
-  // (ou au-dessus, si négatif) l'horizon.
   function ecart(angle) {
     const cosA = (-Math.sin(enRadians(angle))
         - Math.sin(enRadians(ville.lat)) * Math.sin(enRadians(declinaison)))
         / (Math.cos(enRadians(ville.lat)) * Math.cos(enRadians(declinaison)));
-    if (cosA < -1 || cosA > 1) return NaN; // soleil qui ne descend jamais assez bas
+    if (cosA < -1 || cosA > 1) return NaN; // cas des hautes latitudes en été
     return enDegres(Math.acos(cosA)) / 15;
   }
 
-  // Hauteur du soleil pour l'ombre de l'Asr (école majoritaire, ombre = 1)
+  // Asr : soleil à la hauteur qui donne une ombre de `ombreAsr` fois
+  // l'objet (1 pour l'école majoritaire, 2 pour l'école hanafite).
   const hauteurAsr = enDegres(Math.atan(
-      1 / (1 + Math.tan(enRadians(Math.abs(ville.lat - declinaison))))));
+      1 / (ombreAsr + Math.tan(enRadians(Math.abs(ville.lat - declinaison))))));
   const cosAsr = (Math.sin(enRadians(hauteurAsr))
       - Math.sin(enRadians(ville.lat)) * Math.sin(enRadians(declinaison)))
       / (Math.cos(enRadians(ville.lat)) * Math.cos(enRadians(declinaison)));
@@ -123,11 +140,11 @@ export function calculeHoraires(date, ville) {
   const plie = (h) => isNaN(h) ? NaN : ((h % 24) + 24) % 24;
 
   return {
-    fajr: plie(midi - ecart(18)),
+    fajr: plie(midi - ecart(methode.fajr)),
     dhouhr: plie(midi),
     asr: plie(midi + ecartAsr),
     maghrib: plie(midi + ecart(0.833)),
-    icha: plie(midi + ecart(17)),
+    icha: plie(midi + ecart(methode.icha)),
   };
 }
 
@@ -136,5 +153,6 @@ export function formatHeure(x) {
   let h = Math.floor(x);
   let mn = Math.round((x - h) * 60);
   if (mn === 60) { mn = 0; h += 1; }
+  h = h % 24;
   return `${String(h).padStart(2, "0")}:${String(mn).padStart(2, "0")}`;
 }
