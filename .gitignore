@@ -1,0 +1,9 @@
+# fichiers d'OS et d'éditeur
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# par précaution, même si le projet n'a aucune dépendance
+node_modules/
