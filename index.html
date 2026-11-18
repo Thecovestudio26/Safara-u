@@ -2,46 +2,91 @@
 <html lang="fr">
 <head>
   <meta charset="utf-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Safara'u Planner</title>
-  <meta name="description" content="Safara'u Planner : horaires de prière, lecture du Coran, agenda, to-do, repas, budget, adhkar. 100 % local, sans compte ni suivi.">
-  <meta name="theme-color" content="#faf6f0">
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext y='.9em' font-size='90'%3E%F0%9F%8C%B8%3C/text%3E%3C/svg%3E">
-  <link rel="stylesheet" href="css/style.css">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>Safarau Planner — Muslimah lifestyle &amp; productivité</title>
+  <meta name="description" content="Planner premium pour la vie quotidienne : prières, Coran, agenda, tâches, budget, adhkar et journal. Toutes les données restent sur votre appareil.">
+  <meta name="theme-color" content="#49352F">
+  <meta name="color-scheme" content="light">
+  <meta name="format-detection" content="telephone=no">
+  <link rel="manifest" href="./manifest.webmanifest">
+  <link rel="icon" type="image/svg+xml" href="./img/icone.svg">
+  <link rel="apple-touch-icon" href="./img/icone-192.png">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="Safarau">
+  <link rel="stylesheet" href="./css/style.css">
 </head>
 <body>
   <a class="aller-contenu" href="#contenu">Aller au contenu</a>
 
-  <header class="entete">
-    <h1>Safara'u Planner</h1>
-    <p class="sous-titre">Planner d'une musulmane : organisation, ibadah et douceur du quotidien ✦</p>
-  </header>
+  <header class="marque-bandeau">
+    <a class="marque" href="#" data-onglet="accueil" aria-label="Safarau Planner, retour à l'accueil">
+      <svg width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true" focusable="false">
+        <circle cx="16" cy="16" r="12.4" stroke="#49352F" stroke-width="1.4"/>
+        <path d="M16 8.4a7.6 7.6 0 0 1 0 15.2" stroke="#B69A72" stroke-width="2.2" stroke-linecap="round"/>
+      </svg>
+      <span class="marque-texte">
+        <b>Safarau</b>
+        <small>Planner</small>
+      </span>
+    </a>
+    <p class="date-du-jour" id="date-du-jour"></p>
 
-  <nav class="onglets" aria-label="Sections du planner">
-    <button type="button" data-onglet="accueil" class="actif">🏡 Accueil</button>
-    <button type="button" data-onglet="prieres">🕌 Prières</button>
-    <button type="button" data-onglet="coran">📖 Coran</button>
-    <button type="button" data-onglet="agenda">📅 Agenda</button>
-    <button type="button" data-onglet="taches">✅ To-do</button>
-    <button type="button" data-onglet="repas">🍽️ Repas &amp; courses</button>
-    <button type="button" data-onglet="budget">💰 Budget</button>
-    <button type="button" data-onglet="dhikr">💫 Adhkar</button>
-    <button type="button" data-onglet="objectifs">🎯 Objectifs</button>
-    <button type="button" data-onglet="bienetre">🌸 Bien-être</button>
-    <button type="button" data-onglet="reglages">⚙️ Réglages</button>
-  </nav>
+    <nav class="nav-principale" aria-label="Navigation principale">
+      <button type="button" data-onglet="accueil" aria-current="page">Accueil</button>
+      <button type="button" data-onglet="prieres">Prières</button>
+      <button type="button" data-onglet="coran">Coran</button>
+      <button type="button" data-onglet="agenda">Agenda</button>
+      <button type="button" data-onglet="taches">Tâches</button>
+      <button type="button" data-onglet="budget">Budget</button>
+      <button type="button" data-ouvrir-feuille aria-haspopup="dialog">Modules</button>
+    </nav>
+  </header>
 
   <main id="contenu" tabindex="-1">
     <noscript>
-      <p>Cette application fonctionne entièrement hors ligne, mais elle a besoin de JavaScript pour s'afficher.</p>
+      <section class="carte">
+        <h2>Safarau Planner a besoin de JavaScript</h2>
+        <p>L'application fonctionne entièrement sur votre appareil ; activez
+        JavaScript dans votre navigateur, puis rechargez la page.</p>
+      </section>
     </noscript>
   </main>
 
   <footer class="pied">
-    <p>Aucune donnée ne quitte votre appareil : pas de compte, pas de cookie, pas de statistiques.</p>
-    <p><a href="CONFIDENTIALITE.md">Confidentialité</a> · Code libre sous licence <a href="LICENSE">MIT</a></p>
+    <p>Safarau Planner · The Cove Studio · vos données restent sur votre appareil</p>
   </footer>
 
-  <script type="module" src="js/app.js"></script>
+  <!-- Feuille « Modules » : accès au reste de l'application -->
+  <button type="button" id="fond-feuille" class="feuille-fond" aria-label="Fermer les modules"></button>
+  <aside id="feuille-modules" class="feuille" role="dialog" aria-modal="true" aria-label="Tous les modules">
+    <header class="feuille-titre">
+      <h2>Modules</h2>
+      <button type="button" class="action-iconique" data-ouvrir-feuille aria-label="Fermer les modules">✕</button>
+    </header>
+    <nav class="grille-modules" aria-label="Modules de l'application">
+      <button type="button" class="bouton-module" data-onglet="repas"><span data-icone="repas"></span>Repas &amp; courses</button>
+      <button type="button" class="bouton-module" data-onglet="dhikr"><span data-icone="dhikr"></span>Adhkār</button>
+      <button type="button" class="bouton-module" data-onglet="objectifs"><span data-icone="objectifs"></span>Objectifs</button>
+      <button type="button" class="bouton-module" data-onglet="bienetre"><span data-icone="bienetre"></span>Bien-être</button>
+      <button type="button" class="bouton-module" data-onglet="journal"><span data-icone="journal"></span>Journal</button>
+      <button type="button" class="bouton-module" data-onglet="recettes"><span data-icone="recettes"></span>Recettes</button>
+      <button type="button" class="bouton-module" data-onglet="defis"><span data-icone="defis"></span>Défis</button>
+      <button type="button" class="bouton-module" data-onglet="reglages"><span data-icone="reglages"></span>Réglages</button>
+    </nav>
+  </aside>
+
+  <!-- Barre basse mobile -->
+  <nav class="barre-basse" aria-label="Navigation">
+    <button type="button" data-onglet="accueil" aria-current="page"><span data-icone="accueil"></span>Accueil<span class="pastille-active"></span></button>
+    <button type="button" data-onglet="agenda"><span data-icone="agenda"></span>Agenda<span class="pastille-active-invisible"></span></button>
+    <button type="button" data-onglet="taches"><span data-icone="taches"></span>Tâches<span class="pastille-active-invisible"></span></button>
+    <button type="button" data-ouvrir-feuille aria-label="Tous les modules"><span data-icone="plus"></span>Plus<span class="pastille-active-invisible"></span></button>
+    <button type="button" data-onglet="reglages"><span data-icone="reglages"></span>Réglages<span class="pastille-active-invisible"></span></button>
+  </nav>
+
+  <div id="annonce" class="annonce" role="status" aria-live="polite"></div>
+
+  <script type="module" src="./js/app.js"></script>
 </body>
 </html>

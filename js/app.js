@@ -1,390 +1,985 @@
-// Point d'entrée : état de l'application, actions et navigation entre
-// les onglets. Une seule page, aucun framework, aucune dépendance.
+// Safarau Planner — chef d'orchestre : état, rendu, actions.
+// Toutes les données vivent dans localStorage (préfixe « planner: »),
+// rien ne quitte l'appareil. Voir CONFIDENTIALITE.md.
 
-import { calculeHoraires, formatHeure, villes, prieres } from "./horaires.js";
-import { lire, ecrire, toutExporter, toutEffacer, nettoyerLesJoursPasses } from "./stockage.js";
+import { villes, prieres, methodes, ecolesAsr, calculeHoraires, formatHeure } from "./horaires.js";
 import {
-  vueAccueil, vuePrieres, vueCoran, vueAgenda, vueTaches, vueRepas,
-  vueBudget, vueDhikr, vueObjectifs, vueBienEtre, vueReglages,
-} from "./vues.js";
+  lire, ecrire, toutExporter, toutEffacer, restaurerSauvegarde, nettoyerLesJoursPasses,
+} from "./stockage.js";
+import { dateISO, moisISO } from "./base.js";
+import { icone } from "./icone.js";
 
-/* ---------- petit outillage ---------- */
+import { vueAccueil } from "./vues/accueil.js";
+import { vuePrieres } from "./vues/prieres.js";
+import { vueCoran } from "./vues/coran.js";
+import { vueAgenda } from "./vues/agenda.js";
+import { vueTaches } from "./vues/taches.js";
+import { vueRepas } from "./vues/repas.js";
+import { vueBudget } from "./vues/budget.js";
+import { vueDhikr } from "./vues/dhikr.js";
+import { vueObjectifs } from "./vues/objectifs.js";
+import { vueBienetre } from "./vues/bienetre.js";
+import { vueJournal } from "./vues/journal.js";
+import { vueRecettes } from "./vues/recettes.js";
+import { vueDefis } from "./vues/defis.js";
+import { vueReglages } from "./vues/reglages.js";
 
-const deuxChiffres = (n) => String(n).padStart(2, "0");
+const VUES = {
+  accueil: vueAccueil, prieres: vuePrieres, coran: vueCoran, agenda: vueAgenda,
+  taches: vueTaches, repas: vueRepas, budget: vueBudget, dhikr: vueDhikr,
+  objectifs: vueObjectifs, bienetre: vueBienetre, journal: vueJournal,
+  recettes: vueRecettes, defis: vueDefis, reglages: vueReglages,
+};
 
-function dateLocale(d = new Date()) {
-  return `${d.getFullYear()}-${deuxChiffres(d.getMonth() + 1)}-${deuxChiffres(d.getDate())}`;
-}
+const nouvelId = () =>
+  Date.now().toString(36) + Math.random().toString(36).slice(2, 7);
 
-function nouvelIdentifiant() {
-  return typeof crypto !== "undefined" && crypto.randomUUID
-    ? crypto.randomUUID()
-    : Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
-}
+const aujourdhui = () => dateISO();
 
-/* ---------- état ---------- */
-
-const aujourdhui = dateLocale();
-const cleJour = `jour:${aujourdhui}`;
-
+// ------------------------------------------------------------------
+// État applicatif : données persistées + état d'interface éphémère.
+// ------------------------------------------------------------------
 const etat = {
-  onglet: "accueil",
+  // persisté
   ville: lire("ville", 0),
-  horaires: null,
-  prochaine: { cle: "", nom: "", heure: "" },
-  decompte: "--:--:--",
-  prieres: lire(cleJour + ":prieres", {}),
+  methode: lire("methode", "uoif"),
+  asr: lire("asr", 0),
   coran: lire("coran", Array.from({ length: 30 }, () => false)),
+  coranJournal: lire("coran:journal", []),
   evenements: lire("evenements", []),
   taches: lire("taches", []),
-  filtreTaches: "toutes",
   repas: lire("repas", []),
   courses: lire("courses", []),
   budget: lire("budget", []),
-  dhikr: lire(cleJour + ":dhikr", {}),
-  routines: lire(cleJour + ":routines", {}),
+  epargne: lire("epargne", []),
+  bilans: lire("bilans", {}),
   objectifs: lire("objectifs", []),
+  journal: lire("journal", []),
+  recettes: lire("recettes", []),
+  defis: lire("defis", []),
+  sections: lire("sections", ["coran", "taches", "agenda", "habitudes", "objectifs"]),
+  dhikrPerso: lire("dhikr-perso", []),
+  hydratationCible: lire("hydratation-cible", 8),
+
+  // données du jour, préfixées par la date
+  dateJour: aujourdhui(),
+  prieres: lire(`jour:${aujourdhui()}:prieres`, {}),
+  dhikr: lire(`jour:${aujourdhui()}:dhikr`, {}),
+  routines: lire(`jour:${aujourdhui()}:routines`, { eau: 0, habitudes: {} }),
+
+  // interface
+  onglet: "accueil",
+  agenda: { vue: "mois", ancre: moisISO(), jourChoisi: aujourdhui() },
+  filtreTaches: "ouvertes",
+  budgetMois: moisISO(),
+  journalMois: moisISO(),
+  planification: null,
+  edition: null,
+  confirmationEffacement: false,
+  villes,
+  horaires: {},
+  prochaine: { nom: "—", cle: "", heure: "--:--" },
+  decompte: "",
 };
 
-// On oublie les données datées des jours précédents, l'appli commence
-// chaque matin sur des pages vierges.
-nettoyerLesJoursPasses(aujourdhui);
+const habitudesJour = () => etat.routines.habitudes ?? {};
 
-function sauvegarder() {
-  ecrire("ville", etat.ville);
-  ecrire(cleJour + ":prieres", etat.prieres);
-  ecrire("coran", etat.coran);
-  ecrire("evenements", etat.evenements);
-  ecrire("taches", etat.taches);
-  ecrire("repas", etat.repas);
-  ecrire("courses", etat.courses);
-  ecrire("budget", etat.budget);
-  ecrire(cleJour + ":dhikr", etat.dhikr);
-  ecrire(cleJour + ":routines", etat.routines);
-  ecrire("objectifs", etat.objectifs);
+// ------------------------------------------------------------------
+// Annonces (petits retours d'action, discrets)
+// ------------------------------------------------------------------
+let minuteurAnnonce = null;
+function annoncer(texte) {
+  const zone = document.getElementById("annonce");
+  if (!zone) return;
+  zone.textContent = texte;
+  zone.classList.add("visible");
+  clearTimeout(minuteurAnnonce);
+  minuteurAnnonce = setTimeout(() => zone.classList.remove("visible"), 3200);
 }
 
-/* ---------- prochaine prière et compte à rebours ---------- */
-
-function rafraichirHoraires() {
-  const maintenant = new Date();
-  etat.horaires = calculeHoraires(maintenant, villes[etat.ville]);
-
-  const heure = maintenant.getHours() + maintenant.getMinutes() / 60
-    + maintenant.getSeconds() / 3600;
-
-  let cle = null, reste = 0;
-  for (const p of prieres) {
-    const h = etat.horaires[p.cle];
-    if (!isNaN(h) && h > heure) { cle = p; reste = h - heure; break; }
-  }
-  if (!cle) {
-    // Toutes les prières du jour sont passées : on vise le Fajr de
-    // demain (l'heure affichée est celle d'aujourd'hui, l'écart d'une
-    // nuit est négligeable).
-    cle = prieres[0];
-    reste = (isNaN(etat.horaires.fajr) ? 6 : etat.horaires.fajr) + 24 - heure;
-  }
-
-  const secondes = Math.max(0, Math.round(reste * 3600));
-  etat.decompte = `${deuxChiffres(Math.floor(secondes / 3600))}:`
-    + `${deuxChiffres(Math.floor((secondes % 3600) / 60))}:`
-    + `${deuxChiffres(secondes % 60)}`;
-  etat.prochaine = {
-    cle: cle.cle,
-    nom: cle.nom,
-    heure: formatHeure(etat.horaires[cle.cle]),
-  };
-  return cle.cle;
-}
-
-/* ---------- rendu ---------- */
-
-const vuesOnglets = {
-  accueil: vueAccueil,
-  prieres: vuePrieres,
-  coran: vueCoran,
-  agenda: vueAgenda,
-  taches: vueTaches,
-  repas: vueRepas,
-  budget: vueBudget,
-  dhikr: vueDhikr,
-  objectifs: vueObjectifs,
-  bienetre: vueBienEtre,
-  reglages: vueReglages,
-};
-
-const contenu = document.getElementById("contenu");
-
-function rendre() {
-  rafraichirHoraires();
-  document.querySelectorAll(".onglets button").forEach((b) => {
-    b.classList.toggle("actif", b.dataset.onglet === etat.onglet);
+// ------------------------------------------------------------------
+// Horaires de prière et décompte
+// ------------------------------------------------------------------
+function majHoraires() {
+  etat.ville = Math.min(Math.max(Number(etat.ville) || 0, 0), villes.length - 1);
+  const methodeChoisie = methodes.find((m) => m.id === etat.methode) ?? methodes[0];
+  etat.methodeChoisie = methodeChoisie;
+  etat.horaires = calculeHoraires(new Date(), villes[etat.ville], {
+    methode: methodeChoisie,
+    ombreAsr: (ecolesAsr[etat.asr] ?? ecolesAsr[0]).id === "hanafi" ? 2 : 1,
   });
-  const vue = vuesOnglets[etat.onglet] || vueAccueil;
-  contenu.innerHTML = vue(etat);
 }
 
-// Le compte à rebours vit sa vie sans redessiner toute la page
-// (sinon les menus déroulants ouverts se refermeraient chaque seconde).
-let prochaineAffichee = "";
-setInterval(() => {
-  const cle = rafraichirHoraires();
-  if (etat.onglet !== "accueil") return;
-  if (cle !== prochaineAffichee) {
-    prochaineAffichee = cle;
-    rendre();
-    return;
+function majProchaine() {
+  const maintenant = new Date();
+  const heureActuelle = maintenant.getHours() + maintenant.getMinutes() / 60;
+  const ordre = prieres;
+  let trouve = null;
+  for (const p of ordre) {
+    const h = etat.horaires[p.cle];
+    if (!Number.isNaN(h) && h > heureActuelle) { trouve = { p, h }; break; }
   }
-  const decompte = document.getElementById("decompte");
-  if (decompte) decompte.textContent = etat.decompte;
-  const nom = document.getElementById("prochaine-nom");
-  if (nom) nom.textContent = etat.prochaine.nom;
-}, 1000);
-
-/* ---------- actions ---------- */
-
-const trouve = (liste, id) => liste.find((x) => x.id === id);
-
-function lireMontant(brut) {
-  const v = parseFloat(String(brut).replace(",", "."));
-  return isNaN(v) ? null : v;
+  if (trouve) {
+    etat.prochaine = { nom: trouve.p.nom, cle: trouve.p.cle, heure: formatHeure(trouve.h) };
+    const ecart = (trouve.h - heureActuelle) * 3600; // secondes
+    etat.secondes = Math.max(0, Math.round(ecart));
+  } else {
+    // plus aucune prière aujourd'hui : la prochaine est le fajr de demain.
+    const demain = new Date();
+    demain.setDate(demain.getDate() + 1);
+    const hDemain = calculeHoraires(demain, villes[etat.ville], {
+      methode: etat.methodeChoisie, ombreAsr: (ecolesAsr[etat.asr] ?? ecolesAsr[0]).id === "hanafi" ? 2 : 1,
+    });
+    etat.prochaine = { nom: "Fajr (demain)", cle: "fajr", heure: formatHeure(hDemain.fajr) };
+    const minuit = 24 * 3600;
+    const maintenantS = Math.round(heureActuelle * 3600);
+    etat.secondes = Math.max(0, minuit - maintenantS + (Number.isNaN(hDemain.fajr) ? 0 : hDemain.fajr * 3600));
+  }
+  etat.decompte = texteDecompte(etat.secondes);
 }
 
+function texteDecompte(secondes) {
+  if (!Number.isFinite(secondes) || secondes < 0) return "";
+  const h = Math.floor(secondes / 3600);
+  const mn = Math.floor((secondes % 3600) / 60);
+  return h > 0 ? `dans ${h} h ${String(mn).padStart(2, "0")}` : `dans ${mn} min`;
+}
+
+function tic() {
+  // 1) décompte, sans re-rendu complet
+  etat.secondes = Math.max(0, etat.secondes - 1);
+  const zoneDecompte = document.getElementById("decompte");
+  if (zoneDecompte) zoneDecompte.textContent = texteDecompte(etat.secondes);
+  if (etat.secondes <= 0) { majProchaine(); rendu(); return; }
+
+  // 2) bascule de minuit : recharger les données du jour
+  const cejour = aujourdhui();
+  if (cejour !== etat.dateJour) {
+    etat.dateJour = cejour;
+    chargerJour();
+    nettoyerLesJoursPasses(cejour);
+    majHoraires();
+    majProchaine();
+    rendu();
+  }
+}
+
+function chargerJour() {
+  const j = etat.dateJour;
+  etat.prieres = lire(`jour:${j}:prieres`, {});
+  etat.dhikr = lire(`jour:${j}:dhikr`, {});
+  etat.routines = lire(`jour:${j}:routines`, { eau: 0, habitudes: {} });
+}
+
+// ------------------------------------------------------------------
+// Rendu
+// ------------------------------------------------------------------
+const principal = () => document.getElementById("contenu");
+
+function rendu() {
+  const vue = VUES[etat.onglet] ?? vueAccueil;
+  principal().innerHTML = vue(etat);
+
+  // état actif de la navigation : aria-current sur tous les boutons
+  const dansFeuille = ["repas", "dhikr", "objectifs", "bienetre", "journal", "recettes", "defis", "reglages", "budget"];
+  document.querySelectorAll("[data-onglet]").forEach((b) => {
+    const actif = b.dataset.onglet === etat.onglet;
+    b.setAttribute("aria-current", actif ? "page" : "false");
+  });
+  // pastille active de la barre mobile (le bouton « Plus » reprend
+  // la main quand le module courant n'y figure pas)
+  document.querySelectorAll(".barre-basse button").forEach((b) => {
+    const onglet = b.dataset.onglet;
+    const actif = onglet
+      ? onglet === etat.onglet
+      : dansFeuille.includes(etat.onglet);
+    b.setAttribute("aria-current", actif ? "page" : "false");
+    const pastille = b.querySelector("[class^=pastille]");
+    if (pastille) pastille.className = actif ? "pastille-active" : "pastille-active-invisible";
+  });
+  fermerFeuille();
+
+  // focus : si un champ d'édition est autofocus, le rendre réel
+  const cible = principal().querySelector("[autofocus]");
+  if (cible) cible.focus();
+}
+
+const ONGLETS_AUTRES = ["repas", "dhikr", "objectifs", "bienetre", "journal", "recettes", "defis"];
+
+function ouvrirFeuille() {
+  document.getElementById("feuille-modules")?.classList.add("ouvert");
+  document.getElementById("fond-feuille")?.classList.add("visible");
+}
+function fermerFeuille() {
+  document.getElementById("feuille-modules")?.classList.remove("ouvert");
+  document.getElementById("fond-feuille")?.classList.remove("visible");
+}
+
+// ------------------------------------------------------------------
+// Persistance ciblée : chaque mutation passe par ici.
+// ------------------------------------------------------------------
+const garde = {
+  prieres: () => ecrire(`jour:${etat.dateJour}:prieres`, etat.prieres),
+  dhikr: () => ecrire(`jour:${etat.dateJour}:dhikr`, etat.dhikr),
+  routines: () => ecrire(`jour:${etat.dateJour}:routines`, etat.routines),
+  coran: () => ecrire("coran", etat.coran),
+  coranJournal: () => ecrire("coran:journal", etat.coranJournal),
+  evenements: () => ecrire("evenements", etat.evenements),
+  taches: () => ecrire("taches", etat.taches),
+  repas: () => ecrire("repas", etat.repas),
+  courses: () => ecrire("courses", etat.courses),
+  budget: () => ecrire("budget", etat.budget),
+  epargne: () => ecrire("epargne", etat.epargne),
+  bilans: () => ecrire("bilans", etat.bilans),
+  objectifs: () => ecrire("objectifs", etat.objectifs),
+  journal: () => ecrire("journal", etat.journal),
+  recettes: () => ecrire("recettes", etat.recettes),
+  defis: () => ecrire("defis", etat.defis),
+  sections: () => ecrire("sections", etat.sections),
+  dhikrPerso: () => ecrire("dhikr-perso", etat.dhikrPerso),
+  ville: () => ecrire("ville", etat.ville),
+  methode: () => ecrire("methode", etat.methode),
+  asr: () => ecrire("asr", etat.asr),
+  hydratationCible: () => ecrire("hydratation-cible", etat.hydratationCible),
+};
+
+// ------------------------------------------------------------------
+// Lecture des champs de formulaire
+// ------------------------------------------------------------------
+const champ = (id) => document.getElementById(id);
+const valeur = (id) => (champ(id)?.value ?? "").trim();
+
+// ------------------------------------------------------------------
+// Actions : dictionnaire dispatché par data-action.
+// ------------------------------------------------------------------
 const actions = {
-  "cocher-priere": (d) => {
-    etat.prieres[d.priere] = !etat.prieres[d.priere];
+  // ----- Prières -----
+  "cocher-priere": (el) => {
+    const cle = el.dataset.priere;
+    etat.prieres[cle] = !etat.prieres[cle];
+    garde.prieres();
+    rendu();
   },
 
-  "basculer-jour-coran": (d) => {
-    const n = Number(d.jour);
-    etat.coran[n] = !etat.coran[n];
+  // ----- Coran -----
+  "cocher-lecture-jour": () => {
+    const joursLus = etat.coran.filter(Boolean).length;
+    const index = Math.min(29, joursLus);
+    etat.coran[index] = true;
+    const j = aujourdhui();
+    if (!etat.coranJournal.includes(j)) etat.coranJournal.push(j);
+    garde.coran();
+    garde.coranJournal();
+    rendu();
   },
-
+  "basculer-jour-coran": (el) => {
+    const i = Number(el.dataset.jour);
+    if (Number.isInteger(i) && i >= 0 && i < 30) {
+      etat.coran[i] = !etat.coran[i];
+      garde.coran();
+      rendu();
+    }
+  },
   "reinitialiser-coran": () => {
-    etat.coran = etat.coran.map(() => false);
+    etat.coran = Array.from({ length: 30 }, () => false);
+    garde.coran();
+    rendu();
   },
 
+  // ----- Agenda -----
+  "choisir-jour-agenda": (el) => {
+    etat.agenda.jourChoisi = el.dataset.id;
+    rendu();
+  },
+  "vue-agenda": (el) => {
+    etat.agenda.vue = el.dataset.valeur;
+    rendu();
+  },
+  "reculer-ancre-agenda": () => { etat.agenda.ancre = moisRelatif(etat.agenda.ancre, -1); rendu(); },
+  "avancer-ancre-agenda": () => { etat.agenda.ancre = moisRelatif(etat.agenda.ancre, 1); rendu(); },
   "ajouter-evenement": () => {
-    const titre = document.getElementById("nouvel-evenement-titre");
-    const date = document.getElementById("nouvel-evenement-date");
-    if (!titre || !titre.value.trim() || !date || !date.value) return;
-    etat.evenements.push({ id: nouvelIdentifiant(), titre: titre.value.trim(), date: date.value });
-    titre.value = "";
+    const titre = valeur("evenement-titre");
+    const date = valeur("evenement-date");
+    if (!titre || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      annoncer("Un titre et une date sont nécessaires."); return;
+    }
+    etat.evenements.push({
+      id: nouvelId(), titre, date,
+      heure: valeur("evenement-heure") || null,
+    });
+    etat.agenda.jourChoisi = date;
+    etat.agenda.ancre = date.slice(0, 7);
+    garde.evenements();
+    rendu();
+    annoncer("Événement ajouté.");
+  },
+  "editer-evenement": (el) => { etat.edition = { module: "agenda", id: el.dataset.id }; rendu(); },
+  "valider-edition-evenement": (el) => {
+    const e = etat.evenements.find((x) => x.id === el.dataset.id);
+    if (!e) { etat.edition = null; rendu(); return; }
+    const titre = valeur("evenement-titre");
+    const date = valeur("evenement-date");
+    if (!titre || !/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      annoncer("Un titre et une date sont nécessaires."); return;
+    }
+    e.titre = titre; e.date = date;
+    e.heure = valeur("evenement-heure") || null;
+    etat.edition = null;
+    garde.evenements();
+    rendu();
+    annoncer("Événement mis à jour.");
+  },
+  "supprimer-evenement": (el) => {
+    etat.evenements = etat.evenements.filter((x) => x.id !== el.dataset.id);
+    if (etat.edition?.id === el.dataset.id) etat.edition = null;
+    garde.evenements();
+    rendu();
+    annoncer("Événement supprimé.");
   },
 
-  "supprimer-evenement": (d) => {
-    etat.evenements = etat.evenements.filter((e) => e.id !== d.id);
-  },
-
+  // ----- Tâches -----
+  "filtrer-taches": (el) => { etat.filtreTaches = el.dataset.valeur; rendu(); },
   "ajouter-tache": () => {
-    const champ = document.getElementById("nouvelle-tache");
-    const prio = document.getElementById("nouvelle-tache-prio");
-    if (!champ || !champ.value.trim()) return;
-    etat.taches.unshift({
-      id: nouvelIdentifiant(),
-      texte: champ.value.trim(),
-      prio: prio ? prio.value : "normale",
+    const texte = valeur("tache-texte");
+    if (!texte) { annoncer("Décris d'abord la tâche."); return; }
+    const echeance = valeur("tache-echeance");
+    etat.taches.push({
+      id: nouvelId(), texte,
+      prio: valeur("tache-prio") || "normale",
+      categorie: valeur("tache-categorie") || null,
+      echeance: /^\d{4}-\d{2}-\d{2}$/.test(echeance) ? echeance : null,
       fait: false,
     });
-    champ.value = "";
+    garde.taches();
+    rendu();
+    annoncer("Tâche ajoutée.");
+  },
+  "basculer-tache": (el) => {
+    const t = etat.taches.find((x) => x.id === el.dataset.id);
+    if (!t) return;
+    t.fait = !t.fait;
+    garde.taches();
+    rendu();
+  },
+  "editer-tache": (el) => { etat.edition = { module: "taches", id: el.dataset.id }; rendu(); },
+  "valider-edition-tache": (el) => {
+    const t = etat.taches.find((x) => x.id === el.dataset.id);
+    if (!t) { etat.edition = null; rendu(); return; }
+    const texte = valeur("tache-texte");
+    if (!texte) { annoncer("Décris d'abord la tâche."); return; }
+    t.texte = texte;
+    t.prio = valeur("tache-prio") || "normale";
+    t.categorie = valeur("tache-categorie") || null;
+    const echeance = valeur("tache-echeance");
+    t.echeance = /^\d{4}-\d{2}-\d{2}$/.test(echeance) ? echeance : null;
+    etat.edition = null;
+    garde.taches();
+    rendu();
+    annoncer("Tâche mise à jour.");
+  },
+  "supprimer-tache": (el) => {
+    etat.taches = etat.taches.filter((x) => x.id !== el.dataset.id);
+    if (etat.edition?.id === el.dataset.id) etat.edition = null;
+    garde.taches();
+    rendu();
+    annoncer("Tâche supprimée.");
   },
 
-  "basculer-tache": (d) => {
-    const t = trouve(etat.taches, d.id);
-    if (t) t.fait = !t.fait;
-  },
-
-  "supprimer-tache": (d) => {
-    etat.taches = etat.taches.filter((t) => t.id !== d.id);
-  },
-
-  "filtrer-taches": (d) => {
-    etat.filtreTaches = d.filtre;
-  },
-
+  // ----- Repas et courses -----
   "ajouter-repas": () => {
-    const plat = document.getElementById("nouveau-repas-nom");
-    const jour = document.getElementById("nouveau-repas-jour");
-    const moment = document.getElementById("nouveau-repas-moment");
-    if (!plat || !plat.value.trim()) return;
+    const plat = valeur("nouveau-repas-plat");
+    if (!plat) { annoncer("Indique le plat à planifier."); return; }
     etat.repas.push({
-      id: nouvelIdentifiant(),
-      jour: jour ? jour.value : "Lundi",
-      moment: moment ? moment.value : "Déjeuner",
-      plat: plat.value.trim(),
+      id: nouvelId(),
+      jour: Number(valeur("nouveau-repas-jour")) || 0,
+      moment: valeur("nouveau-repas-moment") || "Déjeuner",
+      plat,
+      recette: null,
     });
-    plat.value = "";
+    garde.repas();
+    rendu();
+    annoncer("Plat planifié.");
   },
-
-  "supprimer-repas": (d) => {
-    etat.repas = etat.repas.filter((r) => r.id !== d.id);
+  "supprimer-repas": (el) => {
+    etat.repas = etat.repas.filter((x) => x.id !== el.dataset.id);
+    garde.repas();
+    rendu();
   },
-
+  "planifier-recette": (el) => { etat.planification = el.dataset.id; etat.onglet = "repas"; rendu(); },
+  "planifier-recette-valider": (el) => {
+    const r = etat.recettes.find((x) => x.id === el.dataset.id);
+    if (!r) { etat.planification = null; rendu(); return; }
+    etat.repas.push({
+      id: nouvelId(),
+      jour: Number(valeur("repas-jour")) || 0,
+      moment: valeur("repas-moment") || "Déjeuner",
+      plat: r.titre,
+      recette: r.id,
+    });
+    etat.planification = null;
+    garde.repas();
+    rendu();
+    annoncer("Recette planifiée dans le menu.");
+  },
+  "annuler-planification": () => { etat.planification = null; rendu(); },
+  "courses-depuis-recette": (el) => {
+    const r = etat.recettes.find((x) => x.id === el.dataset.id);
+    if (!r) return;
+    const existants = new Set(etat.courses.map((c) => c.texte.toLowerCase()));
+    let ajoutes = 0;
+    for (const ingredient of (r.ingredients ?? [])) {
+      const texte = ingredient.trim();
+      if (!texte || existants.has(texte.toLowerCase())) continue;
+      etat.courses.push({ id: nouvelId(), texte, fait: false });
+      existants.add(texte.toLowerCase());
+      ajoutes++;
+    }
+    garde.courses();
+    rendu();
+    annoncer(ajoutes ? `${ajoutes} article(s) ajouté(s) à la liste.` : "Tout était déjà sur la liste.");
+  },
   "ajouter-course": () => {
-    const nom = document.getElementById("nouvelle-course-nom");
-    const qte = document.getElementById("nouvelle-course-qte");
-    if (!nom || !nom.value.trim()) return;
-    etat.courses.push({
-      id: nouvelIdentifiant(),
-      nom: nom.value.trim(),
-      qte: qte ? qte.value.trim() : "",
-      fait: false,
-    });
-    nom.value = "";
-    if (qte) qte.value = "";
+    const texte = valeur("nouveau-course");
+    if (!texte) { annoncer("Indique l'article à acheter."); return; }
+    etat.courses.push({ id: nouvelId(), texte, fait: false });
+    garde.courses();
+    rendu();
   },
-
-  "basculer-course": (d) => {
-    const c = trouve(etat.courses, d.id);
-    if (c) c.fait = !c.fait;
+  "basculer-course": (el) => {
+    const c = etat.courses.find((x) => x.id === el.dataset.id);
+    if (!c) return;
+    c.fait = !c.fait;
+    garde.courses();
+    rendu();
   },
-
-  "supprimer-course": (d) => {
-    etat.courses = etat.courses.filter((c) => c.id !== d.id);
+  "supprimer-course": (el) => {
+    etat.courses = etat.courses.filter((x) => x.id !== el.dataset.id);
+    garde.courses();
+    rendu();
   },
-
-  "rayer-courses": () => {
+  "vider-courses-faites": () => {
+    const avant = etat.courses.length;
     etat.courses = etat.courses.filter((c) => !c.fait);
+    garde.courses();
+    rendu();
+    annoncer(avant - etat.courses.length + " article(s) retiré(s).");
   },
 
+  // ----- Budget -----
+  "reculer-budget-mois": () => { etat.budgetMois = moisRelatif(etat.budgetMois, -1); rendu(); },
+  "avancer-budget-mois": () => { etat.budgetMois = moisRelatif(etat.budgetMois, 1); rendu(); },
   "ajouter-ligne-budget": () => {
-    const libelle = document.getElementById("budget-libelle");
-    const montant = lireMontant((document.getElementById("budget-montant") || {}).value);
-    const categorie = document.getElementById("budget-categorie");
-    const type = document.getElementById("budget-type");
-    if (!libelle || !libelle.value.trim() || montant === null || montant === 0) return;
-    etat.budget.unshift({
-      id: nouvelIdentifiant(),
-      libelle: libelle.value.trim(),
-      montant: Math.abs(montant),
-      categorie: categorie ? categorie.value : "Autre",
-      type: type ? type.value : "depense",
-      mois: dateLocale().slice(0, 7),
+    const montant = Number(valeur("budget-montant").replace(",", "."));
+    if (!Number.isFinite(montant) || montant <= 0) {
+      annoncer("Indique un montant supérieur à zéro."); return;
+    }
+    const type = valeur("budget-type") === "revenu" ? "revenu" : "depense";
+    etat.budget.push({
+      id: nouvelId(), mois: etat.budgetMois, type,
+      categorie: valeur("budget-categorie") || null,
+      montant, libelle: valeur("budget-libelle") || null,
     });
-    libelle.value = "";
+    garde.budget();
+    rendu();
+    annoncer(type === "revenu" ? "Revenu enregistré." : "Dépense enregistrée.");
+  },
+  "supprimer-ligne-budget": (el) => {
+    etat.budget = etat.budget.filter((x) => x.id !== el.dataset.id);
+    garde.budget();
+    rendu();
+    annoncer("Écriture supprimée.");
+  },
+  "ajouter-enveloppe": () => {
+    const nom = valeur("enveloppe-nom");
+    if (!nom) { annoncer("Donne un nom au projet d'épargne."); return; }
+    const cible = Number(valeur("enveloppe-cible").replace(",", "."));
+    etat.epargne.push({
+      id: nouvelId(), nom,
+      cible: Number.isFinite(cible) && cible > 0 ? cible : 0,
+      solde: 0,
+    });
+    garde.epargne();
+    rendu();
+    annoncer("Projet d'épargne créé.");
+  },
+  "verser-enveloppe": (el) => {
+    const env = etat.epargne.find((x) => x.id === el.dataset.id);
+    const montant = Number((valeur(`versement-${el.dataset.id}`) || "").replace(",", "."));
+    if (!env || !Number.isFinite(montant) || montant <= 0) {
+      annoncer("Indique un montant à verser."); return;
+    }
+    env.solde += montant;
+    garde.epargne();
+    rendu();
+    annoncer(`Versement noté sur « ${env.nom} ».`);
+  },
+  "retirer-enveloppe": (el) => {
+    const env = etat.epargne.find((x) => x.id === el.dataset.id);
+    const montant = Number((valeur(`versement-${el.dataset.id}`) || "").replace(",", "."));
+    if (!env || !Number.isFinite(montant) || montant <= 0) {
+      annoncer("Indique un montant à retirer."); return;
+    }
+    env.solde = Math.max(0, env.solde - montant);
+    garde.epargne();
+    rendu();
+    annoncer(`Retrait noté sur « ${env.nom} ».`);
+  },
+  "supprimer-enveloppe": (el) => {
+    etat.epargne = etat.epargne.filter((x) => x.id !== el.dataset.id);
+    garde.epargne();
+    rendu();
+  },
+  "enregistrer-bilan": (el) => {
+    etat.bilans[el.dataset.valeur] = valeur("bilan-texte");
+    garde.bilans();
+    rendu();
+    annoncer("Bilan enregistré.");
   },
 
-  "supprimer-ligne-budget": (d) => {
-    etat.budget = etat.budget.filter((l) => l.id !== d.id);
+  // ----- Adhkar -----
+  "compter-dhikr": (el) => {
+    const id = el.dataset.id;
+    etat.dhikr[id] = (etat.dhikr[id] ?? 0) + 1;
+    garde.dhikr();
+    rendu();
+  },
+  "reinitialiser-dhikr": (el) => {
+    delete etat.dhikr[el.dataset.id];
+    garde.dhikr();
+    rendu();
+  },
+  "ajouter-dhikr-perso": () => {
+    const texte = valeur("dhikr-perso-texte");
+    if (!texte) { annoncer("Écris d'abord l'invocation."); return; }
+    etat.dhikrPerso.push({
+      id: nouvelId(), texte, latin: texte,
+      cible: Number(valeur("dhikr-perso-cible")) || 100,
+      source: "",
+    });
+    garde.dhikrPerso();
+    rendu();
+    annoncer("Dhikr personnel ajouté.");
+  },
+  "supprimer-dhikr-perso": (el) => {
+    etat.dhikrPerso = etat.dhikrPerso.filter((x) => x.id !== el.dataset.id);
+    delete etat.dhikr[el.dataset.id];
+    garde.dhikrPerso();
+    garde.dhikr();
+    rendu();
   },
 
-  "compter-dhikr": (d) => {
-    etat.dhikr[d.id] = (etat.dhikr[d.id] || 0) + 1;
-  },
-
-  "remettre-dhikr": (d) => {
-    delete etat.dhikr[d.id];
-  },
-
-  "remettre-tous-dhikr": () => {
-    etat.dhikr = {};
-  },
-
+  // ----- Objectifs -----
   "ajouter-objectif": () => {
-    const titre = document.getElementById("nouvel-objectif-titre");
-    const etapes = parseInt((document.getElementById("nouvel-objectif-etapes") || {}).value, 10);
-    if (!titre || !titre.value.trim() || !etapes || etapes < 1) return;
+    const titre = valeur("objectif-titre");
+    if (!titre) { annoncer("Donne un titre à l'objectif."); return; }
     etat.objectifs.push({
-      id: nouvelIdentifiant(),
-      titre: titre.value.trim(),
-      etapes,
+      id: nouvelId(), titre,
+      rythme: valeur("objectif-rythme") || null,
+      etapes: Number(valeur("objectif-etapes")) || 10,
       avancement: 0,
     });
-    titre.value = "";
+    garde.objectifs();
+    rendu();
+    annoncer("Objectif créé.");
+  },
+  "avancer-objectif": (el) => {
+    const o = etat.objectifs.find((x) => x.id === el.dataset.id);
+    if (!o) return;
+    o.avancement = Math.min(o.etapes, o.avancement + 1);
+    garde.objectifs();
+    rendu();
+  },
+  "reculer-objectif": (el) => {
+    const o = etat.objectifs.find((x) => x.id === el.dataset.id);
+    if (!o) return;
+    o.avancement = Math.max(0, o.avancement - 1);
+    garde.objectifs();
+    rendu();
+  },
+  "supprimer-objectif": (el) => {
+    etat.objectifs = etat.objectifs.filter((x) => x.id !== el.dataset.id);
+    garde.objectifs();
+    rendu();
+    annoncer("Objectif supprimé.");
   },
 
-  "avancer-objectif": (d) => {
-    const o = trouve(etat.objectifs, d.id);
-    if (o) o.avancement = Math.min(o.etapes, o.avancement + 1);
+  // ----- Bien-être -----
+  "ajouter-eau": (el) => {
+    const i = Number(el.dataset.valeur);
+    etat.routines.eau = Math.max(etat.routines.eau ?? 0, (Number.isInteger(i) ? i : 0) + 1);
+    if (etat.routines.eau >= etat.hydratationCible) etat.routines.eau = etat.hydratationCible;
+    garde.routines();
+    rendu();
+  },
+  "retirer-eau": (el) => {
+    const i = Number(el.dataset.valeur);
+    etat.routines.eau = Math.max(0, Number.isInteger(i) ? i : 0);
+    garde.routines();
+    rendu();
+  },
+  "basculer-habitude": (el) => {
+    const cle = el.dataset.valeur;
+    if (!cle) return;
+    const h = etat.routines.habitudes ?? (etat.routines.habitudes = {});
+    h[cle] = !h[cle];
+    garde.routines();
+    rendu();
+  },
+  "definir-hydratation": () => {
+    const v = Number(valeur("hydratation-cible"));
+    if ([6, 8, 10].includes(v)) {
+      etat.hydratationCible = v;
+      garde.hydratationCible();
+      annoncer(`Objectif : ${v} verres par jour.`);
+    }
+    rendu();
   },
 
-  "reculer-objectif": (d) => {
-    const o = trouve(etat.objectifs, d.id);
-    if (o) o.avancement = Math.max(0, o.avancement - 1);
+  // ----- Journal -----
+  "reculer-journal-mois": () => { etat.journalMois = moisRelatif(etat.journalMois, -1); rendu(); },
+  "avancer-journal-mois": () => { etat.journalMois = moisRelatif(etat.journalMois, 1); rendu(); },
+  "ajouter-entree": () => {
+    const texte = valeur("entree-texte");
+    const gratitude = valeur("entree-gratitude");
+    if (!texte && !gratitude) { annoncer("Écris au moins une ligne."); return; }
+    const date = valeur("entree-date");
+    etat.journal.push({
+      id: nouvelId(),
+      date: /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : aujourdhui(),
+      texte, gratitude: gratitude || null,
+    });
+    garde.journal();
+    rendu();
+    annoncer("Entrée enregistrée.");
+  },
+  "editer-entree": (el) => { etat.edition = { module: "journal", id: el.dataset.id }; rendu(); },
+  "valider-edition-entree": (el) => {
+    const e = etat.journal.find((x) => x.id === el.dataset.id);
+    if (!e) { etat.edition = null; rendu(); return; }
+    const date = valeur("entree-date");
+    e.date = /^\d{4}-\d{2}-\d{2}$/.test(date) ? date : e.date;
+    e.texte = valeur("entree-texte");
+    e.gratitude = valeur("entree-gratitude") || null;
+    etat.edition = null;
+    garde.journal();
+    rendu();
+    annoncer("Entrée mise à jour.");
+  },
+  "supprimer-entree": (el) => {
+    etat.journal = etat.journal.filter((x) => x.id !== el.dataset.id);
+    if (etat.edition?.id === el.dataset.id) etat.edition = null;
+    garde.journal();
+    rendu();
+    annoncer("Entrée supprimée.");
   },
 
-  "supprimer-objectif": (d) => {
-    etat.objectifs = etat.objectifs.filter((o) => o.id !== d.id);
+  // ----- Recettes -----
+  "ajouter-recette": () => {
+    const titre = valeur("recette-titre");
+    if (!titre) { annoncer("Donne un titre à la recette."); return; }
+    etat.recettes.push({
+      id: nouvelId(), titre,
+      ingredients: valeur("recette-ingredients").split("\n").map((s) => s.trim()).filter(Boolean),
+      etapes: valeur("recette-etapes") || null,
+    });
+    garde.recettes();
+    rendu();
+    annoncer("Recette enregistrée.");
+  },
+  "editer-recette": (el) => { etat.edition = { module: "recettes", id: el.dataset.id }; rendu(); },
+  "valider-edition-recette": (el) => {
+    const r = etat.recettes.find((x) => x.id === el.dataset.id);
+    if (!r) { etat.edition = null; rendu(); return; }
+    const titre = valeur("recette-titre");
+    if (!titre) { annoncer("Donne un titre à la recette."); return; }
+    r.titre = titre;
+    r.ingredients = valeur("recette-ingredients").split("\n").map((s) => s.trim()).filter(Boolean);
+    r.etapes = valeur("recette-etapes") || null;
+    etat.edition = null;
+    garde.recettes();
+    rendu();
+    annoncer("Recette mise à jour.");
+  },
+  "supprimer-recette": (el) => {
+    etat.recettes = etat.recettes.filter((x) => x.id !== el.dataset.id);
+    if (etat.edition?.id === el.dataset.id) etat.edition = null;
+    garde.recettes();
+    rendu();
+    annoncer("Recette supprimée.");
   },
 
-  "basculer-routine": (d) => {
-    etat.routines[d.id] = !etat.routines[d.id];
+  // ----- Défis -----
+  "ajouter-defi": () => {
+    const titre = valeur("defi-titre");
+    if (!titre) { annoncer("Décris d'abord le défi."); return; }
+    etat.defis.push({
+      id: nouvelId(), titre,
+      duree: Number(valeur("defi-duree")) || 30,
+      jours: [],
+    });
+    garde.defis();
+    rendu();
+    annoncer("Défi lancé, courage !");
+  },
+  "cocher-jour-defi": (el) => {
+    const d = etat.defis.find((x) => x.id === el.dataset.id);
+    if (!d) return;
+    if (!(d.jours ?? []).includes(aujourdhui())) {
+      d.jours = [...(d.jours ?? []), aujourdhui()];
+      garde.defis();
+    }
+    rendu();
+  },
+  "supprimer-defi": (el) => {
+    etat.defis = etat.defis.filter((x) => x.id !== el.dataset.id);
+    garde.defis();
+    rendu();
+    annoncer("Défi supprimé.");
   },
 
+  // ----- Édition générique -----
+  "annuler-edition": () => { etat.edition = null; rendu(); },
+
+  // ----- Réglages : données et installation -----
   "exporter-donnees": () => {
     const donnees = JSON.stringify(toutExporter(), null, 2);
-    const blob = new Blob([donnees], { type: "application/json" });
-    const lien = document.createElement("a");
-    lien.href = URL.createObjectURL(blob);
-    lien.download = "safarau-planner-donnees.json";
-    document.body.appendChild(lien);
-    lien.click();
-    lien.remove();
-    setTimeout(() => URL.revokeObjectURL(lien.href), 3000);
+    const nom = `safarau-sauvegarde-${aujourdhui()}.json`;
+    telechargerTexte(nom, donnees, "application/json");
+    annoncer("Sauvegarde téléchargée.");
   },
-
-  "effacer-donnees": () => {
-    if (!confirm("Supprimer définitivement toutes les données de l'application ?")) return;
+  "demander-effacement": () => { etat.confirmationEffacement = true; rendu(); },
+  "annuler-effacement": () => { etat.confirmationEffacement = false; rendu(); },
+  "confirmer-effacement": () => {
     toutEffacer();
-    location.reload();
+    // recharger l'état à neuf sans recharger la page
+    for (const [cle, defaut] of Object.entries(VALEURS_DEFAUT)) etat[cle] = structuredClone(defaut);
+    etat.edition = null;
+    etat.confirmationEffacement = false;
+    etat.onglet = "accueil";
+    chargerJour();
+    majHoraires();
+    majProchaine();
+    rendu();
+    annoncer("Toutes les données ont été effacées de cet appareil.");
+  },
+  "installer-pwa": async () => {
+    const evenement = etat.evenementInstallation;
+    if (!evenement) { annoncer("Installation non proposée par ce navigateur."); return; }
+    evenement.prompt();
+    const choix = await evenement.userChoice;
+    annoncer(choix.outcome === "accepted" ? "Application installée." : "Installation annulée.");
+    etat.evenementInstallation = null;
+    etat.installationPossible = false;
+    rendu();
   },
 };
 
-function executer(action, donnees) {
-  const fn = actions[action];
-  if (!fn) return;
-  fn(donnees);
-  sauvegarder();
-  rendre();
+function moisRelatif(mois, decalage) {
+  const [annee, m] = mois.split("-").map(Number);
+  const d = new Date(annee, m - 1 + decalage, 1);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}`;
 }
 
-/* ---------- événements ---------- */
+function telechargerTexte(nom, texte, type) {
+  const blob = new Blob([texte], { type });
+  const lien = document.createElement("a");
+  lien.href = URL.createObjectURL(blob);
+  lien.download = nom;
+  document.body.appendChild(lien);
+  lien.click();
+  setTimeout(() => URL.revokeObjectURL(lien.href), 3000);
+  lien.remove();
+}
 
-// La touche Entrée valide aussi les formulaires, sans qu'on ait à
-// viser le bouton « Ajouter ».
-const champParAction = {
-  "nouvel-evenement-titre": "ajouter-evenement",
-  "nouvelle-tache": "ajouter-tache",
-  "nouveau-repas-nom": "ajouter-repas",
-  "nouvelle-course-nom": "ajouter-course",
-  "budget-libelle": "ajouter-ligne-budget",
-  "budget-montant": "ajouter-ligne-budget",
-  "nouvel-objectif-titre": "ajouter-objectif",
-};
-
-document.addEventListener("keydown", (e) => {
-  if (e.key !== "Enter") return;
-  const action = champParAction[e.target.id];
-  if (action) {
-    e.preventDefault();
-    executer(action, {});
-  }
-});
-
-document.addEventListener("click", (e) => {
-  const boutonOnglet = e.target.closest("[data-onglet]");
-  if (boutonOnglet) {
-    etat.onglet = boutonOnglet.dataset.onglet;
-    rendre();
+// Réglages : selects et cases à cocher gérés via l'événement change.
+function surChangement(cible) {
+  const reglage = cible.dataset?.reglage;
+  if (reglage === "ville" || cible.id?.startsWith("ville-")) {
+    etat.ville = Math.min(Math.max(Number(cible.value) || 0, 0), villes.length - 1);
+    garde.ville();
+    majHoraires();
+    majProchaine();
+    rendu();
     return;
   }
-  const cible = e.target.closest("[data-action]");
-  if (cible) executer(cible.dataset.action, cible.dataset);
-});
-
-document.addEventListener("change", (e) => {
-  if (e.target.classList.contains("choix-ville")) {
-    etat.ville = Number(e.target.value);
-    sauvegarder();
-    rendre();
+  if (reglage === "methode") {
+    etat.methode = cible.value;
+    garde.methode();
+    majHoraires();
+    majProchaine();
+    rendu();
+    return;
   }
-});
-
-/* ---------- départ ---------- */
-
-if (document.readyState === "loading") {
-  document.addEventListener("DOMContentLoaded", () => rendre());
-} else {
-  rendre();
+  if (reglage === "asr") {
+    etat.asr = Number(cible.value) || 0;
+    garde.asr();
+    majHoraires();
+    majProchaine();
+    rendu();
+    return;
+  }
+  if (reglage === "section" && cible.type === "checkbox") {
+    const cle = cible.value;
+    if (cible.checked && !etat.sections.includes(cle)) etat.sections.push(cle);
+    if (!cible.checked) etat.sections = etat.sections.filter((s) => s !== cle);
+    garde.sections();
+    return; // pas de re-rendu : la case doit rester visible
+  }
+  if (reglage === "import" && cible.files?.[0]) {
+    const fichier = cible.files[0];
+    fichier.text().then((texte) => {
+      try {
+        const resultat = restaurerSauvegarde(JSON.parse(texte));
+        if (resultat < 0) throw new Error("structure");
+        rechargerTout();
+        rendu();
+        annoncer(resultat ? `${resultat} élément(s) restauré(s).` : "Aucune donnée reconnue dans ce fichier.");
+      } catch (_e) {
+        annoncer("Fichier illisible : sauvegarde Safarau attendue.");
+      }
+    });
+    cible.value = "";
+  }
 }
+
+// Recharge l'ensemble de l'état depuis le stockage (après import ou effacement).
+function rechargerTout() {
+  for (const [cle, lecteur] of Object.entries(LECTEURS)) etat[cle] = lecteur();
+  chargerJour();
+  majHoraires();
+  majProchaine();
+}
+
+const VALEURS_DEFAUT = {
+  ville: 0, methode: "uoif", asr: 0,
+  coran: Array.from({ length: 30 }, () => false),
+  coranJournal: [], evenements: [], taches: [], repas: [], courses: [],
+  budget: [], epargne: [], bilans: {}, objectifs: [], journal: [],
+  recettes: [], defis: [],
+  sections: ["coran", "taches", "agenda", "habitudes", "objectifs"],
+  dhikrPerso: [], hydratationCible: 8,
+};
+
+const LECTEURS = {
+  ville: () => lire("ville", 0),
+  methode: () => lire("methode", "uoif"),
+  asr: () => lire("asr", 0),
+  coran: () => lire("coran", VALEURS_DEFAUT.coran),
+  coranJournal: () => lire("coran:journal", []),
+  evenements: () => lire("evenements", []),
+  taches: () => lire("taches", []),
+  repas: () => lire("repas", []),
+  courses: () => lire("courses", []),
+  budget: () => lire("budget", []),
+  epargne: () => lire("epargne", []),
+  bilans: () => lire("bilans", {}),
+  objectifs: () => lire("objectifs", []),
+  journal: () => lire("journal", []),
+  recettes: () => lire("recettes", []),
+  defis: () => lire("defis", []),
+  sections: () => lire("sections", VALEURS_DEFAUT.sections),
+  dhikrPerso: () => lire("dhikr-perso", []),
+  hydratationCible: () => lire("hydratation-cible", 8),
+};
+
+// ------------------------------------------------------------------
+// Écouteurs globaux
+// ------------------------------------------------------------------
+function demarrer() {
+  majHoraires();
+  majProchaine();
+
+  document.addEventListener("click", (e) => {
+    const boutonOnglet = e.target.closest("[data-onglet]");
+    if (boutonOnglet) {
+      e.preventDefault();
+      etat.onglet = boutonOnglet.dataset.onglet;
+      fermerFeuille();
+      rendu();
+      window.scrollTo({ top: 0 });
+      return;
+    }
+    const ouvrir = e.target.closest("[data-ouvrir-feuille]");
+    if (ouvrir) {
+      e.preventDefault();
+      const dejaOuverte = document.getElementById("feuille-modules")?.classList.contains("ouvert");
+      dejaOuverte ? fermerFeuille() : ouvrirFeuille();
+      return;
+    }
+    if (e.target.closest("#fond-feuille")) { fermerFeuille(); return; }
+
+    const el = e.target.closest("[data-action]");
+    if (!el || el.disabled) return;
+    const action = actions[el.dataset.action];
+    if (action) {
+      e.preventDefault();
+      action(el);
+    }
+  });
+
+  document.addEventListener("change", (e) => {
+    const cible = e.target;
+    if (cible.matches?.("[data-reglage]") || cible.id?.startsWith("ville-")) {
+      surChangement(cible);
+    }
+  });
+
+  // Entrée dans un champ : déclenche le bouton principal du formulaire.
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" || e.shiftKey) return;
+    const champActif = e.target;
+    if (!champActif.matches?.('input[type="text"], input[type="number"], input:not([type])')) return;
+    if (champActif.type === "date" || champActif.type === "time") return; // laisser le calendrier
+    const formulaire = champActif.closest(".formulaire");
+    if (!formulaire) return;
+    const boutonPrincipal = formulaire.querySelector('[data-action^="ajouter"], [data-action^="valider-edition"], [data-action^="planifier-recette-valider"]');
+    if (boutonPrincipal && !boutonPrincipal.disabled) {
+      e.preventDefault();
+      boutonPrincipal.click();
+    }
+  });
+
+  // Installation PWA quand le navigateur la propose.
+  window.addEventListener("beforeinstallprompt", (e) => {
+    e.preventDefault();
+    etat.evenementInstallation = e;
+    etat.installationPossible = true;
+    if (etat.onglet === "reglages") rendu();
+  });
+
+  // Service worker : cache pour le hors-ligne (silencieux si absent).
+  if ("serviceWorker" in navigator && location.protocol.startsWith("http")) {
+    navigator.serviceWorker.register("./sw.js").catch(() => {
+      /* pas de hors-ligne sur ce contexte (http local, etc.) */
+    });
+  }
+
+  // Icônes vectorielles de la navigation (fixe, hors du contenu re-rendu).
+  document.querySelectorAll("[data-icone]").forEach((zone) => {
+    zone.innerHTML = icone(zone.dataset.icone, 19);
+  });
+
+  // Échap referme la feuille des modules.
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") fermerFeuille();
+  });
+
+  // date française dans le bandeau (plateformes mobiles)
+  const zoneDate = document.getElementById("date-du-jour");
+  if (zoneDate) {
+    const cejour = new Date();
+    let hegire = "";
+    try {
+      hegire = new Intl.DateTimeFormat("fr-FR-u-ca-islamic-umalqura",
+        { day: "numeric", month: "long" }).format(cejour);
+    } catch (_e) { /* calendrier hégirien indisponible ici */ }
+    zoneDate.textContent = cejour.toLocaleDateString("fr-FR",
+      { weekday: "long", day: "numeric", month: "long" })
+      + (hegire ? "\n" + hegire : "");
+  }
+
+  rendu();
+  setInterval(tic, 1000);
+}
+
+demarrer();
