@@ -1,67 +1,81 @@
-# Safara'u Planner 🌸
+# Safarau Planner
 
-Un planner pensé pour le quotidien d'une musulmane : prières, lecture du
-Coran, agenda, to-do list, menus de la semaine, liste de courses, budget,
-adhkar, objectifs et petites habitudes du quotidien.
+**Premium Muslimah lifestyle & productivity.** Une application web hors ligne
+pour organiser sa journée autour de ce qui compte : prières, Coran, agenda,
+tâches, budget et bien-être.
 
-Le fil conducteur du projet : **tout reste sur l'appareil**. Pas de compte,
-pas de réseau, pas de cookie, pas de publicité. On ouvre la page, ça marche.
+> 📍 Application web installable (PWA). Ajoutez-la à votre écran d'accueil :
+> elle s'ouvre comme une application native et fonctionne sans réseau.
+> Ce n'est pas une application App Store / Google Play.
 
-## Ce qu'on y trouve
+## Ce que fait l'application
 
-- Horaires de prière calculés hors ligne (une vingtaine de villes)
-- Suivi des cinq prières du jour
-- Lecture du Coran sur 30 jours, un juz par jour
-- Agenda et to-do list avec priorités
-- Menus de la semaine et liste de courses
-- Budget du mois, dépenses par catégorie
-- Compteurs d'adhkar avec objectifs (33, 100…)
-- Objectifs personnels, étape par étape
-- Routines du quotidien : soin de soi, sport, ménage
+| Module | Ce qu'on y trouve |
+| --- | --- |
+| **Accueil** | Tableau de bord : prochaine prière et décompte, lecture du Coran, tâches prioritaires, rendez-vous à venir, habitudes, objectifs |
+| **Prières** | Horaires calculés sur l'appareil (5 méthodes, école chafiite ou hanafite), suivi des cinq prières, 22 villes |
+| **Coran** | Programme de lecture de 30 jours (un juz par jour), limites usuelles des juz, historique des jours lus |
+| **Agenda** | Vues mois / semaine / jour, événements avec heure, tâches à échéance du jour |
+| **Tâches** | Priorités, catégories, échéances, retards signalés, filtres en cours / terminées |
+| **Repas & courses** | Menu de la semaine, liste de courses interactive, recettes reliées aux courses en un geste |
+| **Budget** | Écritures mensuelles par catégorie, répartition visuelle, enveloppes d'épargne, bilan libre |
+| **Adhkār** | Compteurs quotidiens (réinitialisés chaque nuit), dhikr personnalisables avec objectif |
+| **Objectifs** | Objectifs annuels ou mensuels, avancement étape par étape |
+| **Bien-être** | Hydratation, habitudes du jour, rituel du soir |
+| **Journal** | Entrées datées, gratitude du jour, navigation par mois |
+| **Recettes** | Bibliothèque maison, « planifier cette semaine », « ingrédients aux courses » |
+| **Défis** | Défis de 7, 21 ou 30 jours, un jour validé par jour |
 
-## Démarrer
+## Principes du produit
 
-Ouvrir `index.html` dans un navigateur. C'est tout.
-Aucune installation, aucune dépendance, aucune donnée envoyée.
+- **Hors ligne d'abord.** Pas de compte, pas de serveur : toutes les données
+  restent dans le navigateur de l'appareil (`localStorage`).
+- **Sobriété visuelle.** Direction « quiet luxury » : chocolat, ivoire, taupe,
+  champagne ; serif éditorial pour les titres, sans-serif pour l'interface,
+  icônes vectorielles dessinées sur une grille unique.
+- **Accessibilité.** Contrastes AA, navigation clavier, libellés ARIA,
+  zone d'évitement « aller au contenu », cibles tactiles confortables.
+- **Vos données sont à vous.** Export JSON en un clic, restauration, effacement
+  définitif. Voir [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
 
-### Le mettre en ligne (GitHub Pages)
+## Tester et installer
 
-1. Réglages du dépôt → **Pages**
-2. Source : branche `main`, dossier `/ (root)`
-3. L'application arrive sur `https://votre-compte.github.io/safarau-planner/`
+Ouvrez simplement `index.html` dans un navigateur, ou publiez le dossier sur
+n'importe quel hébergement statique :
 
-## Respect de la vie privée
+- **GitHub Pages** : Settings → Pages → Deploy from branch → `main` / racine.
+- **Hors ligne** : l'application s'installe (« Ajouter à l'écran d'accueil »
+  sur iOS, bouton d'installation sur Android et ordinateur) et fonctionne
+  sans connexion grâce au service worker.
 
-Conçu avec le RGPD en tête :
+### Icônes PNG (une seule commande)
 
-- aucune donnée collectée, aucun cookie, aucune mesure d'audience ;
-- tout vit dans le stockage local du navigateur, exportable en JSON et
-  effaçable en un clic depuis l'onglet Réglages ;
-- aucune ressource externe (polices, CDN, images) : rien ne part chez un tiers ;
-- navigation clavier, libellés ARIA et contrastes soignés pour l'accessibilité.
+L'icône vectorielle `img/icone.svg` suffit au navigateur. Pour les
+installations iOS/Android les plus propres, générez les PNG :
 
-Détails : [CONFIDENTIALITE.md](CONFIDENTIALITE.md).
-
-## Structure du projet
-
+```bash
+python3 outils/generer_icones.py   # crée img/icone-192.png, -512.png, masquables
+git add img/*.png && git commit -m "icônes PWA générées"
 ```
-├── index.html          la page unique
-├── css/style.css       style reposant, couleurs douces
-├── js/horaires.js      villes et calcul des horaires de prière
-├── js/stockage.js      persistance locale, export, effacement
-├── js/vues.js          le rendu des onglets
-└── js/app.js           état, actions et navigation
+
+Le script n'utilise que la bibliothèque standard Python (aucune dépendance).
+
+## Tests
+
+```bash
+cd tests
+node test-render.mjs        # rendu de chaque vue, états vides, éditions
+node test-stockage.mjs      # export, import, effacement, nettoyage des jours
+node test-integration.mjs  # chargement complet + navigation entre modules
 ```
 
-## Limites connues
+## Avertissement
 
-- Les horaires de prière sont indicatifs (méthode des angles, Fajr 18° /
-  Icha 17°). Aux hautes latitudes en plein été, le Fajr ou l'Icha peuvent
-  afficher `--:--` quand le calcul n'a pas de sens physique. Dans tous les
-  cas, la mosquée reste la référence pour la prière en groupe.
-- Si la page reste ouverte après minuit, la journée ne bascule qu'au
-  rechargement suivant (les cases du jour se remettent à zéro à ce moment-là).
+Les horaires de prière sont calculés localement, à titre indicatif. La mosquée
+reste la référence pour la prière en groupe, surtout aux hautes latitudes.
+Les dhikr et sources citées sont des hadiths célèbres ; aucune référence
+n'est inventée au-delà des sources usuelles (al-Bukhârî, Muslim, Tirmidhî).
 
-## Licence
+---
 
-Code sous licence MIT — voir [LICENSE](LICENSE).
+Safarau Planner est un produit **The Cove Studio** — licence MIT.
