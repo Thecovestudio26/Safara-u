@@ -6,7 +6,8 @@ tâches, budget et bien-être.
 
 > 📍 Application web installable (PWA). Ajoutez-la à votre écran d'accueil :
 > elle s'ouvre comme une application native et fonctionne sans réseau.
-> Ce n'est pas une application App Store / Google Play.
+> Pour aller jusqu'à l'App Store / Google Play, le wrap natif Capacitor est
+> prêt : voir [docs/GUIDE-NATIF.md](docs/GUIDE-NATIF.md).
 
 ## Ce que fait l'application
 
@@ -44,6 +45,8 @@ Ouvrez simplement `index.html` dans un navigateur, ou publiez le dossier sur
 n'importe quel hébergement statique :
 
 - **GitHub Pages** : Settings → Pages → Deploy from branch → `main` / racine.
+- **Vercel** : New Project → importer ce dépôt GitHub, aucun réglage
+  (site statique), déploiement automatique à chaque push.
 - **Hors ligne** : l'application s'installe (« Ajouter à l'écran d'accueil »
   sur iOS, bouton d'installation sur Android et ordinateur) et fonctionne
   sans connexion grâce au service worker.
@@ -54,11 +57,26 @@ L'icône vectorielle `img/icone.svg` suffit au navigateur. Pour les
 installations iOS/Android les plus propres, générez les PNG :
 
 ```bash
-python3 outils/generer_icones.py   # crée img/icone-192.png, -512.png, masquables
+python3 outils/generer_icones.py   # 192, 512, 1024 + masquables
 git add img/*.png && git commit -m "icônes PWA générées"
 ```
 
 Le script n'utilise que la bibliothèque standard Python (aucune dépendance).
+
+## Aller plus loin : application native (App Store / Play Store)
+
+Le dépôt est **prêt pour un wrap Capacitor**, sans rien installer de plus
+que Node.js :
+
+```bash
+npm install          # Capacitor 7
+npm run web          # prépare www/ (copie des fichiers, aucune compilation)
+npx cap add android  # ou : npx cap add ios
+```
+
+Configuration : `capacitor.config.json` + `package.json`. Le guide complet
+étape par étape (icônes, signature, soumission aux deux stores, cycle de
+mise à jour) est dans [docs/GUIDE-NATIF.md](docs/GUIDE-NATIF.md).
 
 ## Tests
 

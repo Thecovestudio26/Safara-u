@@ -1,0 +1,18 @@
+{
+  "name": "safarau-planner",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Safarau Planner : planner premium hors ligne, PWA prête pour un wrap natif Capacitor.",
+  "scripts": {
+    "web": "node outils/preparer_www.mjs",
+    "icones": "python3 outils/generer_icones.py",
+    "sync:android": "npm run web && npx cap sync android",
+    "sync:ios": "npm run web && npx cap sync ios"
+  },
+  "devDependencies": {
+    "@capacitor/cli": "^7.0.0",
+    "@capacitor/core": "^7.0.0",
+    "@capacitor/android": "^7.0.0",
+    "@capacitor/ios": "^7.0.0"
+  }
+}

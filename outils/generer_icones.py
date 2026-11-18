@@ -11,6 +11,7 @@ Usage :
 Produit :
     img/icone-192.png           (icône « any »)
     img/icone-512.png
+    img/icone-1024.png          (grande icône, notamment l'AppIcon Xcode)
     img/icone-masquable-192.png (icône maskable, zone de sécurité)
     img/icone-masquable-512.png
 
@@ -81,6 +82,7 @@ def ecrire_png(nom, taille, echelle):
 if __name__ == "__main__":
     ecrire_png("icone-192.png", 192, 0.78)
     ecrire_png("icone-512.png", 512, 0.78)
+    ecrire_png("icone-1024.png", 1024, 0.78)
     ecrire_png("icone-masquable-192.png", 192, 0.62)
     ecrire_png("icone-masquable-512.png", 512, 0.62)
     print("Icônes générées. Ajoutez-les au dépôt : git add img/*.png")

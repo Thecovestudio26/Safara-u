@@ -1,0 +1,12 @@
+{
+  "appId": "com.thecovestudio.safarau",
+  "appName": "Safarau Planner",
+  "webDir": "www",
+  "backgroundColor": "#F8F5EF",
+  "android": {
+    "allowMixedContent": false
+  },
+  "ios": {
+    "contentInset": "never"
+  }
+}

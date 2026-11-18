@@ -7,3 +7,11 @@ Thumbs.db
 
 # par précaution, même si le projet n'a aucune dépendance
 node_modules/
+
+# dossier web régénéré par "npm run web" (wrap Capacitor)
+www/
+
+# projets natifs générés par Capacitor (npx cap add android / ios)
+# retirez ces deux lignes si vous souhaitez les versionner
+/android/
+/ios/
